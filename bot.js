@@ -17,6 +17,7 @@ console.debug("Discord client initialized with intents.");
 const MODEL = process.env.MODEL || "mistral";
 const OLLAMA_URL = process.env.OLLAMA_URL || "https://ollama.com";
 const CHANNEL_LIMIT = process.env.TRANSLATE_CHANNEL || null;
+const APP_ID = process.env.APP_ID || null;
 
 console.debug(`Using model: ${MODEL}`);
 console.debug(`Ollama URL: ${OLLAMA_URL}`);
@@ -51,22 +52,17 @@ async function aiTranslate(text, targetLang) {
   try {
 
     const prompt = `
-You are a professional translator.
+      You are a professional translator.
+      
+      Translate the message into ${targetLang}.
+      Preserve meaning and tone.
+      Return ONLY the translated sentence.
 
-Translate the message into ${targetLang}.
-Preserve meaning and tone.
-Return ONLY the translated sentence.
+      Message:
+      ${text}
+      `;
 
-Message:
-${text}
-`;
-
-    const response = await oll.chat({
-      model: MODEL,
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    return response.message.content.trim();
+    return await executeAIPrompt(prompt);
 
   } catch (err) {
     console.error("AI translation error:", err.message);
@@ -80,23 +76,30 @@ client.once("ready", () => {
 
 client.on("messageCreate", async (message) => {
   console.debug(`Received message: ${message.content} (ID: ${message.id}) in channel ${message.channel.id} by ${message.author.tag}`);
+
   if (message.author.bot) return;
   if (!message.content.trim()) return;
 
   if (CHANNEL_LIMIT && message.channel.id !== CHANNEL_LIMIT) return;
 
-  try {
-
-    if (process.env.SUGGEST_FLAG === "true") {
+  
+  if (process.env.SUGGEST_FLAG === "true") {
+    try {
       for (const emoji of Object.keys(FLAG_LANG)) {
         if (!message.reactions.cache.has(emoji)) {
           await message.react(emoji);
         }
       }
+    } catch (err) {
+      console.log("Reaction error:", err.message);
     }
+  }
+  
+  if (message.mentions.users.size > 0 && message.mentions.users.has(APP_ID)) {
+    const reply = await replyToMention(message.content);
 
-  } catch (err) {
-    console.log("Reaction error:", err.message);
+    if (!reply) return;
+    await message.reply(reply);
   }
 
 });
@@ -116,7 +119,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
   const message = reaction.message;
 
-  if (message.author.bot) return;
+  // if (message.author.bot) return;
 
   const targetLang = FLAG_LANG[emoji];
 
@@ -145,3 +148,33 @@ client.on("messageReactionAdd", async (reaction, user) => {
 console.debug("Logging in to Discord...");
 client.login(process.env.DISCORD_TOKEN);
 console.debug("Discord login initiated.");
+
+async function replyToMention(text) {
+
+  try {
+
+    const prompt = `
+      You are discord bot, pretending to be Denver, a character from TV Series Money Heist.
+      
+      Respond to the message in such a Denver way.
+
+      Message:
+      ${text}
+      `;
+
+    return await executeAIPrompt(prompt);
+
+  } catch (err) {
+    console.error("AI Reply To Mention error:", err.message);
+    return null;
+  }
+}
+
+async function executeAIPrompt(prompt) {
+  const response = await oll.chat({
+    model: MODEL,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  return response.message.content.trim();
+}
