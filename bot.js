@@ -1,4 +1,5 @@
 require("dotenv").config();
+const cron = require('node-cron');
 const { Client, GatewayIntentBits } = require("discord.js");
 const axios = require("axios");
 const { Ollama } = require("ollama");
@@ -102,6 +103,14 @@ client.on("messageCreate", async (message) => {
     await message.reply(reply);
   }
 
+  if (message.content === 'enable lucky bag notif for this channel' && message.author.id === '415711938064941057') {
+    const LUCKY_BAG_CRON = process.env.LUCKY_BAG_CRON || '55 1,9,17 * * *'
+    const luckyBagsSched = createCRONSchedule(message, LUCKY_BAG_CRON);
+
+    if (luckyBagsSched) {
+      await message.reply("Lucky bags notification enabled!");
+    }
+  }
 });
 
 client.on("messageReactionAdd", async (reaction, user) => {
@@ -148,6 +157,24 @@ client.on("messageReactionAdd", async (reaction, user) => {
 console.debug("Logging in to Discord...");
 client.login(process.env.DISCORD_TOKEN);
 console.debug("Discord login initiated.");
+
+function createCRONSchedule(message, schedule) {
+  return cron.schedule(schedule, async () => {
+    try {
+      const channelId = message.channelId;
+      const channel = await client.channels.fetch(channelId);
+
+      if (channel) {
+        await channel.send("@everyone Lucky bags in 5 minutes!");
+      }
+    } catch (error) {
+      console.error('Error sending scheduled message:', error);
+    }
+  }, {
+    scheduled: true,
+    timezone: "UTC"
+  });
+}
 
 async function replyToMention(text) {
 
