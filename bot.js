@@ -1,6 +1,6 @@
 require("dotenv").config();
 const cron = require('node-cron');
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, Interaction, Events } = require("discord.js");
 const axios = require("axios");
 const { Ollama } = require("ollama");
 
@@ -71,11 +71,11 @@ async function aiTranslate(text, targetLang) {
   }
 }
 
-client.once("ready", () => {
+client.once(Events.ClientReady, () => {
   console.log(`AI Translator ready: ${client.user.tag}`);
 });
 
-client.on("messageCreate", async (message) => {
+client.on(Events.MessageCreate, async (message) => {
   console.debug(`Received message: ${message.content} (ID: ${message.id}) in channel ${message.channel.id} by ${message.author.tag}`);
 
   if (message.author.bot) return;
@@ -113,7 +113,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-client.on("messageReactionAdd", async (reaction, user) => {
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
   console.debug(`Reaction added: ${reaction.emoji.name} by ${user.tag} on message ID ${reaction.message.id}`);
   if (user.bot) return;
 
@@ -154,8 +154,40 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
 });
 
+client.on(Events.InteractionCreate, async interaction => {
+    console.debug(`Received interaction: ${interaction}`);
+    // Ignore interactions that are not slash commands
+    if (!interaction.isChatInputCommand()) return;
+
+    const { commandName } = interaction;
+
+    if (commandName === 'aoem') {
+        await interaction.deferReply();
+        var text = interaction.options.getString('query');
+        try {
+          const searchResult = await oll.webSearch({ query: `${text} in aoem (Mobile). Current season only. Base on Sigarme's youtube videos`, maxResults: 1 });
+          const context = `
+            You are an expert advisor for Age of Empires Mobile (AoE Mobile) only.
+            Avoid mentioning Sigarme.
+            Limit response below 2000 characters.
+
+            Use this live web context to answer:
+            ${searchResult.results[0].content}
+            `;
+          const prompt = `${text}` 
+
+          var response = await executeAIPromptWithContext(context, prompt);
+
+          await interaction.editReply(response);
+        } catch (err) {
+          console.error("aoem command error:", err.message);
+          await interaction.editReply('thinking error hehe');
+        }
+    }
+});
+
 console.debug("Logging in to Discord...");
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.BOT_TOKEN);
 console.debug("Discord login initiated.");
 
 function createCRONSchedule(message, schedule) {
@@ -201,6 +233,18 @@ async function executeAIPrompt(prompt) {
   const response = await oll.chat({
     model: MODEL,
     messages: [{ role: 'user', content: prompt }],
+  });
+
+  return response.message.content.trim();
+}
+
+async function executeAIPromptWithContext(context, prompt) {
+  const response = await oll.chat({
+    model: MODEL,
+    messages: [
+      { role: 'system', content: context},
+      { role: 'user', content: prompt },
+    ],
   });
 
   return response.message.content.trim();
