@@ -1,8 +1,6 @@
 require("dotenv").config();
 const cron = require('node-cron');
-const { Client, GatewayIntentBits, Interaction, Events } = require("discord.js");
-const axios = require("axios");
-const { Ollama } = require("ollama");
+const { Client, GatewayIntentBits, Events } = require("discord.js");
 
 console.debug("Starting AI Translator bot...");
 const client = new Client({
@@ -19,6 +17,8 @@ const MODEL = process.env.MODEL || "mistral";
 const OLLAMA_URL = process.env.OLLAMA_URL || "https://ollama.com";
 const CHANNEL_LIMIT = process.env.TRANSLATE_CHANNEL || null;
 const APP_ID = process.env.APP_ID || null;
+
+const { aiTranslate, replyToMention, executeAIPromptWithContext, ollamaWebSearch } = require("./ai");
 
 console.debug(`Using model: ${MODEL}`);
 console.debug(`Ollama URL: ${OLLAMA_URL}`);
@@ -39,37 +39,6 @@ const FLAG_LANG = {
   "🇳🇿": "English (New Zealand)",
 };
 
-const oll = new Ollama({
-  host: OLLAMA_URL,
-  headers: {
-    Authorization: "Bearer " + process.env.OLLAMA_API_KEY,
-  },
-});
-
-console.debug("Ollama client initialized.");
-
-async function aiTranslate(text, targetLang) {
-
-  try {
-
-    const prompt = `
-      You are a professional translator.
-      
-      Translate the message into ${targetLang}.
-      Preserve meaning and tone.
-      Return ONLY the translated sentence.
-
-      Message:
-      ${text}
-      `;
-
-    return await executeAIPrompt(prompt);
-
-  } catch (err) {
-    console.error("AI translation error:", err.message);
-    return null;
-  }
-}
 
 client.once(Events.ClientReady, () => {
   console.log(`AI Translator ready: ${client.user.tag}`);
@@ -165,7 +134,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await interaction.deferReply();
         var text = interaction.options.getString('query');
         try {
-          const searchResult = await oll.webSearch({ query: `${text} in aoem (Mobile). Current season only. Base on Sigarme's youtube videos`, maxResults: 1 });
+          const searchResult = await ollamaWebSearch(`${text} in aoem (Mobile). Current season only. Base on Sigarme's youtube videos`, 1);
           const context = `
             You are an expert advisor for Age of Empires Mobile (AoE Mobile) only.
             Avoid mentioning Sigarme.
@@ -208,44 +177,3 @@ function createCRONSchedule(message, schedule) {
   });
 }
 
-async function replyToMention(text) {
-
-  try {
-
-    const prompt = `
-      You are discord bot, pretending to be Denver, a character from TV Series Money Heist.
-      
-      Respond to the message in such a Denver way.
-
-      Message:
-      ${text}
-      `;
-
-    return await executeAIPrompt(prompt);
-
-  } catch (err) {
-    console.error("AI Reply To Mention error:", err.message);
-    return null;
-  }
-}
-
-async function executeAIPrompt(prompt) {
-  const response = await oll.chat({
-    model: MODEL,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  return response.message.content.trim();
-}
-
-async function executeAIPromptWithContext(context, prompt) {
-  const response = await oll.chat({
-    model: MODEL,
-    messages: [
-      { role: 'system', content: context},
-      { role: 'user', content: prompt },
-    ],
-  });
-
-  return response.message.content.trim();
-}
